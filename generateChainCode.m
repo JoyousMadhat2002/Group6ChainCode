@@ -1,67 +1,89 @@
 function chainCode = generateChainCode(features)
     % Find boundaries of all connected components
-    boundaries = bwboundaries(features);
+    boundaries = bwboundaries(features, 'noholes');
 
-    % Check if any boundaries were found
     if isempty(boundaries)
         chainCode = [];
         return;
     end
 
-    % Use the largest boundary for simplicity
     boundary = boundaries{1};
     numPoints = size(boundary, 1);
 
-    % Preallocate the chain code array
-    chainCode = zeros(1, numPoints - 1);  % -1 because the differential will be calculated from the second point
+    % Initialize the lookup table for direction vectors
+    keys = 0:7;
+    values = {
+        [1, 0],                           % East
+        [sqrt(2)/2, -sqrt(2)/2],          % Northeast
+        [0, -1],                          % North
+        [-sqrt(2)/2, -sqrt(2)/2],         % Northwest
+        [-1, 0],                          % West
+        [-sqrt(2)/2, sqrt(2)/2],          % Southwest
+        [0, 1],                           % South
+        [sqrt(2)/2, sqrt(2)/2]            % Southeast
+    };
+    directionMap = containers.Map(keys, values);
 
-    % Previous direction initialization
-    previousPoint = boundary(1, :);
-    previousDirection = -1;  % Initialize with a non-directional value
+    % Initialize chain code storage and variables for previous state
+    chainCode = [];
+    previousDirection = -1;
+    previousPoint = boundary(1, :);  % Start with the first point
 
-    % Loop over each point in the boundary starting from the second point
-     for k = 2:numPoints
+    % Loop over each point in the boundary
+    for k = 2:numPoints
         currentPoint = boundary(k, :);
-        direction = currentPoint - previousPoint;
-        code = -1;
-        
-        % Determine the direction code
-        if direction(1) == 1 && direction(2) == 0
-            code = 0;
-        elseif direction(1) == 1 && direction(2) == -1
-            code = 1;
-        elseif direction(1) == 0 && direction(2) == -1
-            code = 2;
-        elseif direction(1) == -1 && direction(2) == -1
-            code = 3;
-        elseif direction(1) == -1 && direction(2) == 0
-            code = 4;
-        elseif direction(1) == -1 && direction(2) == 1
-            code = 5;
-        elseif direction(1) == 0 && direction(2) == 1
-            code = 6;
-        elseif direction(1) == 1 && direction(2) == 1
-            code = 7;
-        end
+        directionVector = currentPoint - previousPoint;
 
-        % Skip if direction is undefined
-        if code == -1
+        % Skip zero vectors which may be noise
+        if norm(directionVector) == 0
             continue;
         end
 
-        % Calculate differential code starting from the second point
-        if k > 2 && previousDirection ~= -1
-            diffCode = mod(code - previousDirection + 4, 4);
-            chainCode(k-2) = diffCode;  % Store the differential code
-        elseif k == 2  % The very first direction
-            chainCode(1) = code;
+        % Normalize the direction vector
+        directionVector = directionVector / norm(directionVector);
+
+        % Find the direction in the map
+        code = -1;
+        for key = keys
+            directionVal = directionMap(key);
+            if all(abs(directionVector - directionVal) < 1e-10)
+                code = key;
+                break;
+            end
         end
 
-        % Update previous direction and point
+        if code == -1
+            disp(['Unhandled direction: ', num2str(directionVector)]);
+            continue;
+        end
+
+        % Store the first valid code or when there's a change in direction
+        if previousDirection == -1 || previousDirection ~= code
+            chainCode(end+1) = code;
+        end
+
+        % Update previous direction and point for next comparison
         previousDirection = code;
         previousPoint = currentPoint;
-     end
-           % Normalization: Rotate chain code to start with the smallest number
-    [~, idx] = min(chainCode);
-    chainCode = [chainCode(idx:end), chainCode(1:idx-1)];
+    end
+
+    % Reduce chain code length by removing consecutive duplicates
+    chainCode = uniqueConsecutive(chainCode);
+
+    % Sort the chain code in ascending order
+    chainCode = sort(chainCode);
+    
+    % Additional check to ensure output is within the expected length
+    if length(chainCode) > 8
+        chainCode = chainCode(1:8);
+    end
+end
+
+function output = uniqueConsecutive(vec)
+    output = vec(1);
+    for i = 2:length(vec)
+        if vec(i) ~= vec(i-1)
+            output(end+1) = vec(i);
+        end
+    end
 end
