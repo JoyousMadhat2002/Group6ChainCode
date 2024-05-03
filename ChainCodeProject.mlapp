@@ -3,15 +3,13 @@ classdef ChainCodeProject < matlab.apps.AppBase
     % Properties that correspond to app components
     properties (Access = public)
         UIFigure                 matlab.ui.Figure
-        PlotChainCodeButton      matlab.ui.control.Button
-        ChainCodeEditField       matlab.ui.control.EditField
-        ChainCodeEditFieldLabel  matlab.ui.control.Label
         SaveChainCodeButton      matlab.ui.control.Button
         ExtractChainCodeButton   matlab.ui.control.Button
         ExtractFeaturesButton    matlab.ui.control.Button
         LoadImageButton          matlab.ui.control.Button
-        UIAxes_3                 matlab.ui.control.UIAxes
-        UIAxes_2                 matlab.ui.control.UIAxes
+        ChainCodeEditField       matlab.ui.control.EditField
+        ChainCodeEditFieldLabel  matlab.ui.control.Label
+        UIAxes2                  matlab.ui.control.UIAxes
         UIAxes                   matlab.ui.control.UIAxes
     end
 
@@ -41,72 +39,77 @@ classdef ChainCodeProject < matlab.apps.AppBase
 
         % Button pushed function: ExtractFeaturesButton
         function ExtractFeaturesButtonPushed(app, event)
-             if isempty(app.OriginalImage)
-                uialert(app.UIFigure, 'Load an image first.', 'Error');
-            else
-                % Preprocess the image first
-                preprocessedImage = preprocessing(app.OriginalImage);
-                % Ensure the preprocessedImage is correctly formatted for the next step
-                if ~isempty(preprocessedImage)
-                    % Extract features from the preprocessed image
-                    app.Features = extractFeatures(preprocessedImage);
-                    imshow(app.Features, 'Parent', app.UIAxes_2);  % Display features
-                    uialert(app.UIFigure, 'Features extracted successfully', 'Success');
+                 if isempty(app.OriginalImage)
+                    uialert(app.UIFigure, 'Load an image first.', 'Error');
                 else
-                    uialert(app.UIFigure, 'Preprocessing failed.', 'Error');
-                end
-            end
+                    % Preprocess the image first
+                    preprocessedImage = preprocessing(app.OriginalImage);
+                    % Ensure the preprocessedImage is correctly formatted for the next step
+                    if ~isempty(preprocessedImage)
+                        % Extract features from the preprocessed image
+                        app.Features = extractFeatures(preprocessedImage);
+                        imshow(app.Features, 'Parent', app.UIAxes2);  % Display features
+                        uialert(app.UIFigure, 'Features extracted successfully', 'Success');
+                    else
+                        uialert(app.UIFigure, 'Preprocessing failed.', 'Error');
+                    end
+                 end
         end
 
         % Button pushed function: ExtractChainCodeButton
         function ExtractChainCodeButtonPushed(app, event)
             if isempty(app.Features)
                 uialert(app.UIFigure, 'Extract features first.', 'Error');
+                return;  % Exit if no features extracted
+            end
+        
+            % Generate the chain code from the extracted features
+            app.ChainCode = generateChainCode(app.Features);
+        
+            % Check if chain code was successfully generated
+            if isempty(app.ChainCode)
+                uialert(app.UIFigure, 'Chain code generation failed.', 'Error');
             else
-                app.ChainCode = generateChainCode(app.Features);
-                if isempty(app.ChainCode)
-                    uialert(app.UIFigure, 'No chain code generated.', 'Error');
-                else
-                    % Convert chain code to a string for the edit field
-                    chainCodeStr = num2str(app.ChainCode);
-                    set(app.ChainCodeEditField, 'Value', chainCodeStr);
-                end
+                % Display chain code in the edit field for viewing
+                app.ChainCodeEditField.Value = num2str(app.ChainCode);
+                uialert(app.UIFigure, 'Chain code extracted successfully.', 'Success');
             end
         end
 
         % Button pushed function: SaveChainCodeButton
         function SaveChainCodeButtonPushed(app, event)
-             if isempty(app.ChainCode)
-                uialert(app.UIFigure, 'Generate chain code first.', 'Error');
-            else
+                % Check if the chain code has been generated
+                if isempty(app.ChainCode)
+                    uialert(app.UIFigure, 'Generate chain code first.', 'Error');
+                    return; % Exit if no chain code
+                end
+            
+                % Open file save dialog box
                 [file, path] = uiputfile('*.txt', 'Save Chain Code As');
                 if isequal(file, 0)
                     uialert(app.UIFigure, 'Saving cancelled.', 'Cancelled');
-                else
-                    fid = fopen(fullfile(path, file), 'wt');
-                    fprintf(fid, '%s', app.ChainCode);  % Corrected from fprint to fprintf
-                    fclose(fid);
-                    uialert(app.UIFigure, 'Chain code saved successfully.', 'Success');
+                    return; % Exit if user cancels the save operation
                 end
-            end
-        end
-
-        % Button pushed function: PlotChainCodeButton
-        function PlotChainCodeButtonPushed(app, event)
-           % Check if the chain code exists before plotting
-            if isempty(app.ChainCode)
-                uialert(app.UIFigure, 'No chain code to plot. Please generate chain code first.', 'Error');
-                return;  % Exit the function if no chain code is available
-            end
-        
-            % Notify user that plotting is starting
-            uialert(app.UIFigure, 'Plotting the chain code. Please wait...', 'Processing');
             
-            % Plot the chain code graphically
-            plotChainCode(app, app.ChainCode);  % This function should handle the entire chain code plotting
-        
-            % Notify user that plotting has completed
-            uialert(app.UIFigure, 'Chain code plotted successfully.', 'Success');
+                % Open the file for writing text
+                fid = fopen(fullfile(path, file), 'wt');
+                if fid == -1
+                    uialert(app.UIFigure, 'Failed to open file for writing.', 'Error');
+                    return; % Exit if file cannot be opened
+                end
+            
+                % Write the chain code to the file
+                if isnumeric(app.ChainCode)
+                    fprintf(fid, '%d ', app.ChainCode); % Saving numeric array as space-separated values
+                else
+                    fprintf(fid, '%s', app.ChainCode); % Assuming it's a string and can be directly written
+                end
+            
+                % Close the file
+                fclose(fid);
+                
+                % Notify the user of success
+                uialert(app.UIFigure, 'Chain code saved successfully.', 'Success');
         end
     end
 
@@ -123,72 +126,53 @@ classdef ChainCodeProject < matlab.apps.AppBase
 
             % Create UIAxes
             app.UIAxes = uiaxes(app.UIFigure);
-            title(app.UIAxes, 'OriginalImageAxes')
+            title(app.UIAxes, 'Title')
             xlabel(app.UIAxes, 'X')
             ylabel(app.UIAxes, 'Y')
             zlabel(app.UIAxes, 'Z')
-            app.UIAxes.Position = [19 220 222 140];
+            app.UIAxes.Position = [16 135 300 185];
 
-            % Create UIAxes_2
-            app.UIAxes_2 = uiaxes(app.UIFigure);
-            title(app.UIAxes_2, 'FeaturesAxes')
-            xlabel(app.UIAxes_2, 'X')
-            ylabel(app.UIAxes_2, 'Y')
-            zlabel(app.UIAxes_2, 'Z')
-            app.UIAxes_2.Position = [19 47 222 140];
-
-            % Create UIAxes_3
-            app.UIAxes_3 = uiaxes(app.UIFigure);
-            title(app.UIAxes_3, 'ChainCodePlot')
-            xlabel(app.UIAxes_3, 'X')
-            ylabel(app.UIAxes_3, 'Y')
-            zlabel(app.UIAxes_3, 'Z')
-            app.UIAxes_3.Position = [305 47 222 140];
-
-            % Create LoadImageButton
-            app.LoadImageButton = uibutton(app.UIFigure, 'push');
-            app.LoadImageButton.ButtonPushedFcn = createCallbackFcn(app, @LoadImageButtonPushed, true);
-            app.LoadImageButton.BackgroundColor = [0.7137 0.7882 0.949];
-            app.LoadImageButton.Position = [52 407 86 30];
-            app.LoadImageButton.Text = 'Load Image';
-
-            % Create ExtractFeaturesButton
-            app.ExtractFeaturesButton = uibutton(app.UIFigure, 'push');
-            app.ExtractFeaturesButton.ButtonPushedFcn = createCallbackFcn(app, @ExtractFeaturesButtonPushed, true);
-            app.ExtractFeaturesButton.BackgroundColor = [0.651 0.4667 0.4667];
-            app.ExtractFeaturesButton.Position = [168 408 103 29];
-            app.ExtractFeaturesButton.Text = 'Extract Features';
-
-            % Create ExtractChainCodeButton
-            app.ExtractChainCodeButton = uibutton(app.UIFigure, 'push');
-            app.ExtractChainCodeButton.ButtonPushedFcn = createCallbackFcn(app, @ExtractChainCodeButtonPushed, true);
-            app.ExtractChainCodeButton.BackgroundColor = [0.4863 0.6314 0.4235];
-            app.ExtractChainCodeButton.Position = [305 407 119 30];
-            app.ExtractChainCodeButton.Text = 'Extract Chain Code';
-
-            % Create SaveChainCodeButton
-            app.SaveChainCodeButton = uibutton(app.UIFigure, 'push');
-            app.SaveChainCodeButton.ButtonPushedFcn = createCallbackFcn(app, @SaveChainCodeButtonPushed, true);
-            app.SaveChainCodeButton.BackgroundColor = [0.5569 0.5961 0.9098];
-            app.SaveChainCodeButton.Position = [446 407 111 30];
-            app.SaveChainCodeButton.Text = 'Save Chain Code';
+            % Create UIAxes2
+            app.UIAxes2 = uiaxes(app.UIFigure);
+            title(app.UIAxes2, 'Title')
+            xlabel(app.UIAxes2, 'X')
+            ylabel(app.UIAxes2, 'Y')
+            zlabel(app.UIAxes2, 'Z')
+            app.UIAxes2.Position = [333 141 288 173];
 
             % Create ChainCodeEditFieldLabel
             app.ChainCodeEditFieldLabel = uilabel(app.UIFigure);
             app.ChainCodeEditFieldLabel.HorizontalAlignment = 'right';
-            app.ChainCodeEditFieldLabel.Position = [328 330 65 22];
+            app.ChainCodeEditFieldLabel.Position = [382 331 65 22];
             app.ChainCodeEditFieldLabel.Text = 'ChainCode';
 
             % Create ChainCodeEditField
             app.ChainCodeEditField = uieditfield(app.UIFigure, 'text');
-            app.ChainCodeEditField.Position = [408 330 100 22];
+            app.ChainCodeEditField.Position = [462 331 100 22];
 
-            % Create PlotChainCodeButton
-            app.PlotChainCodeButton = uibutton(app.UIFigure, 'push');
-            app.PlotChainCodeButton.ButtonPushedFcn = createCallbackFcn(app, @PlotChainCodeButtonPushed, true);
-            app.PlotChainCodeButton.BackgroundColor = [0.851 0.3255 0.098];
-            app.PlotChainCodeButton.Position = [370 191 119 30];
-            app.PlotChainCodeButton.Text = 'PlotChainCode';
+            % Create LoadImageButton
+            app.LoadImageButton = uibutton(app.UIFigure, 'push');
+            app.LoadImageButton.ButtonPushedFcn = createCallbackFcn(app, @LoadImageButtonPushed, true);
+            app.LoadImageButton.Position = [56 400 100 22];
+            app.LoadImageButton.Text = 'LoadImage';
+
+            % Create ExtractFeaturesButton
+            app.ExtractFeaturesButton = uibutton(app.UIFigure, 'push');
+            app.ExtractFeaturesButton.ButtonPushedFcn = createCallbackFcn(app, @ExtractFeaturesButtonPushed, true);
+            app.ExtractFeaturesButton.Position = [180 400 100 22];
+            app.ExtractFeaturesButton.Text = 'ExtractFeatures';
+
+            % Create ExtractChainCodeButton
+            app.ExtractChainCodeButton = uibutton(app.UIFigure, 'push');
+            app.ExtractChainCodeButton.ButtonPushedFcn = createCallbackFcn(app, @ExtractChainCodeButtonPushed, true);
+            app.ExtractChainCodeButton.Position = [309 400 112 22];
+            app.ExtractChainCodeButton.Text = 'ExtractChainCode';
+
+            % Create SaveChainCodeButton
+            app.SaveChainCodeButton = uibutton(app.UIFigure, 'push');
+            app.SaveChainCodeButton.ButtonPushedFcn = createCallbackFcn(app, @SaveChainCodeButtonPushed, true);
+            app.SaveChainCodeButton.Position = [461 400 102 22];
+            app.SaveChainCodeButton.Text = 'SaveChainCode';
 
             % Show the figure after all components are created
             app.UIFigure.Visible = 'on';
